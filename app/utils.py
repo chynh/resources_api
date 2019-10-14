@@ -123,12 +123,14 @@ def standardize_response(payload={}, status_code=200):
         apiVersion=API_VERSION,
         status="ok",
         status_code=status_code,
-        data=None
+        data=None,
+        error=0
     )
 
     if status_code >= 400 and err_map.get(status_code):
         resp["status"] = err_map.get(status_code)
         resp["status_code"] = status_code
+        resp["error"] = 1
 
         if errors:
             resp["errors"] = errors
@@ -140,6 +142,7 @@ def standardize_response(payload={}, status_code=200):
 
     elif not data:
         message = "Something went wrong"
+        resp["error"] = 1
         resp["errors"] = {'errors': {"server-error": {"message": message}}}
         resp["status_code"] = 500
         resp["status"] = "Server Error"

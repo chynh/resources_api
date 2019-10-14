@@ -6,7 +6,7 @@ from app.utils import standardize_response
 def requires_body(func):
     def wrapper(*args, **kwargs):
         try:
-            # JSON body is {}
+            # JSON body is {} or []
             if not request.get_json():
                 return missing_json_error()
         except Exception as e:
@@ -20,30 +20,31 @@ def requires_body(func):
 
 def missing_json_error():
     message = "You must provide a valid JSON body to use this endpoint"
-    error = {'errors': {"missing-body": {"message": message}}}
+    error = {'errors': [{"missing-body": {"message": message}}]}
     return standardize_response(error, status_code=422)
 
 
-def validate_resource_list(req, rlist):
-    errors = {'errors': {}}
+def validate_resource_list(method, rlist):
+    errors = {'errors': []}
     max_resources = 200
 
     if len(rlist) > max_resources:
         msg = f"This endpoint will accept a max of {max_resources} resources"
-        return {"errors": {"too-long": {"message": msg}}}
+        return {"errors": [{"too-long": {"message": msg}}]}
 
     for i, r in enumerate(rlist):
-        validation = validate_resource(req, r)
+        validation = validate_resource(method, r)
         if validation:
-            errors['errors'][f'resource-{i}'] = validation
+            validation['index'] = i
+            errors['errors'].append(validation)
 
     if bool(errors['errors']):
         return errors
 
 
-def validate_resource(request, json, id=-1):
+def validate_resource(method, json, id=-1):
     errors = None
-    validation_errors = {"errors": {}}
+    validation_errors = {}
     missing_params = {"params": []}
     invalid_params = {"params": []}
     required = []
@@ -53,7 +54,7 @@ def validate_resource(request, json, id=-1):
         col_name = column.name.replace('_id', '')
 
         # There are only required parameters for POSTing new resources.
-        if request.method == 'POST':
+        if method == 'POST':
             if column.nullable is False and col_name != 'id':
                 required.append(col_name)
 
@@ -109,18 +110,18 @@ def validate_resource(request, json, id=-1):
                 f"https://resources.operationcode.org/api/v1/{resource.id}"
 
     if missing_params["params"]:
-        validation_errors["errors"]["missing-params"] = missing_params
+        validation_errors["missing-params"] = missing_params
         msg = " The following params were missing: "
         msg += ", ".join(missing_params.get("params")) + "."
-        validation_errors["errors"]["missing-params"]["message"] = msg
+        validation_errors["missing-params"]["message"] = msg
         errors = True
 
     if invalid_params["params"]:
-        validation_errors["errors"]["invalid-params"] = invalid_params
+        validation_errors["invalid-params"] = invalid_params
         msg = " The following params were invalid: "
         msg += ", ".join(invalid_params.get("params")) + ". "
         msg += invalid_params.get("message", "")
-        validation_errors["errors"]["invalid-params"]["message"] = msg.strip()
+        validation_errors["invalid-params"]["message"] = msg.strip()
         errors = True
 
     if errors:

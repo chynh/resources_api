@@ -12,6 +12,7 @@ from dateutil import parser
 from datetime import datetime
 from prometheus_client import Counter, Summary
 import app.utils as utils
+from os import environ
 
 
 # Metrics
@@ -37,29 +38,10 @@ def resources():
 def post_resources():
     json = request.get_json()
 
-    if not isinstance(json, dict):
-        return wrong_type("resource object")
-
-    validation_errors = validate_resource(request, json)
-
-    if validation_errors:
-        return utils.standardize_response(payload=validation_errors, status_code=422)
-
-    return create_resource(json, db)
-
-
-@latency_summary.time()
-@failures_counter.count_exceptions()
-@bp.route('/resources/bulk', methods=['POST'], endpoint='create_resource_bulk')
-@requires_body
-@authenticate
-def post_resources_bulk():
-    json = request.get_json()
-
     if not isinstance(json, list):
         return wrong_type("list of resources objects")
 
-    validation_errors = validate_resource_list(request, json)
+    validation_errors = validate_resource_list(request.method, json)
 
     if validation_errors:
         return utils.standardize_response(payload=validation_errors, status_code=422)
@@ -80,7 +62,7 @@ def resource(id):
 @requires_body
 @authenticate
 def put_resource(id):
-    validation_errors = validate_resource(request, request.get_json(), id)
+    validation_errors = validate_resource(request.method, request.get_json(), id)
 
     if validation_errors:
         return utils.standardize_response(payload=validation_errors, status_code=422)
@@ -462,6 +444,12 @@ def create_resources(json, db):
 
         for resource in json:
             res = create_resource(resource, db)
+
+            # Pass along standardized responses generated from create_resource
+            if isinstance(res, tuple):
+                return res
+
+            # If it's anything other than a resource, something went wrong so bail here
             if not isinstance(res, dict):
                 raise Exception(res)
 
@@ -492,14 +480,17 @@ def create_resource(json, db):
         logger.exception(e)
         return utils.standardize_response(status_code=422)
 
+    except (AlgoliaUnreachableHostException, AlgoliaException) as e:
+        if (environ.get("FLASK_ENV") != 'development'):
+            db.session.rollback()
+            logger.exception(e)
+            msg = f"Algolia failed to index new resource '{new_resource.name}'"
+            print(msg)
+            error = {'errors': [{"algolia-failed": {"message": msg}}]}
+            return utils.standardize_response(payload=error, status_code=500)
+
     except Exception as e:
         logger.exception(e)
         return utils.standardize_response(status_code=500)
-
-    except (AlgoliaUnreachableHostException, AlgoliaException) as e:
-        logger.exception(e)
-        msg = f"Algolia failed to index new resource '{new_resource.name}'"
-        print(msg)
-        return msg
 
     return new_resource.serialize

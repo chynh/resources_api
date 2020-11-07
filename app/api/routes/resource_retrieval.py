@@ -15,6 +15,7 @@ from configs import Config
 @latency_summary.time()
 @failures_counter.count_exceptions()
 @bp.route('/resources', methods=['GET'], endpoint='get_resources')
+@authenticate(allow_no_auth_key=True)
 def resources():
     return get_resources()
 
@@ -22,11 +23,11 @@ def resources():
 @latency_summary.time()
 @failures_counter.count_exceptions()
 @bp.route('/resources/<int:id>', methods=['GET'], endpoint='get_resource')
+@authenticate(allow_no_auth_key=True)
 def resource(id):
     return get_resource(id)
 
 
-@authenticate(allow_no_auth_key=True)
 def get_resources():
     """
     Gets a paginated list of resources.
@@ -119,7 +120,6 @@ def get_resources():
     )
 
 
-@authenticate(allow_no_auth_key=True)
 def get_resource(id):
     resource = Resource.query.get(id)
     api_key = g.auth_key.apikey if g.auth_key else None
